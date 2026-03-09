@@ -1,1 +1,10 @@
+data/*.csv
+data/*.parquet
+
+# python
+__pycache__/
+*.pyc
+
+# environments
 venv/
+.env
