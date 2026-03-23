@@ -74,16 +74,11 @@ Score(m) = minᵤ Sᵤ'(m)
 ## Project Structure
 
 ```
-src/
-  constraint_engine/
-    hard_constraints.py
-    constraint_relaxation.py
-    scoring.py
-    group_aggregation.py
-
-  pipeline/
-    run_recommender.py
-
+hard_constraints.py
+constraint_relaxation.py
+scoring.py
+group_aggregation.py
+run_recommender.py
 data/ (not included)
 ```
 
