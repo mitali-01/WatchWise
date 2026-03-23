@@ -133,6 +133,7 @@ def finalize_dataset(df):
         "movieId",
         "tmdbId",
         "title",
+        "genres",  # ✅ IMPORTANT: keep raw genres for constraints
         "language",
         "language_id",
         "runtime",
