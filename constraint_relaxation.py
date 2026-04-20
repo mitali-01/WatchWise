@@ -1,79 +1,33 @@
 import pandas as pd
-import numpy as np
 
 
 class ConstraintRelaxation:
-    def __init__(self, df: pd.DataFrame, relaxable_constraints, lambda_val=0.5):
+    def __init__(self, df: pd.DataFrame, users: list, lambda_val=0.5):
         self.df = df.copy()
-        self.constraints = relaxable_constraints
+        self.users = users
         self.lambda_val = lambda_val
-
-    def compute_violation(self, df, constraint):
-        field = constraint["field"]
-        op = constraint["op"]
-        value = constraint["value"]
-        flexibility = constraint.get("flexibility", 1)
-
-        if field not in df.columns:
-            return pd.Series(0, index=df.index)
-
-        # Numeric constraints
-        if op == "<=":
-            violation = np.maximum(0, df[field] - value)
-
-        elif op == ">=":
-            violation = np.maximum(0, value - df[field])
-
-        elif op == "<":
-            violation = np.maximum(0, df[field] - value)
-
-        elif op == ">":
-            violation = np.maximum(0, value - df[field])
-
-        # Categorical constraints
-        elif op == "in":
-            violation = ~df[field].isin(value)
-            violation = violation.astype(int)
-
-        elif op == "not_in":
-            violation = df[field].isin(value)
-            violation = violation.astype(int)
-
-        elif op == "genre_in":
-            violation = df["genres"].apply(
-                lambda x: 0 if any(g in x.split("|") for g in value) else 1
-                if pd.notna(x) else 1
-            )
-
-        elif op == "genre_not_in":
-            violation = df["genres"].apply(
-                lambda x: 1 if any(g in x.split("|") for g in value) else 0
-                if pd.notna(x) else 0
-            )
-
-        else:
-            violation = pd.Series(0, index=df.index)
-
-        # Normalize numeric violations
-        if violation.dtype != int:
-            violation = violation / (flexibility + 1e-6)
-
-        return violation
 
     def apply_relaxation(self):
         df = self.df.copy()
+        scaled_cols = []
 
-        total_violation = pd.Series(0, index=df.index)
+        for i, user in enumerate(self.users):
+            base_col = f"user_{i}_violation"
+            scaled_col = f"user_{i}_violation_scaled"
 
-        for c in self.constraints:
-            v = self.compute_violation(df, c)
-            total_violation += v
+            if base_col not in df.columns:
+                continue
 
-        df["total_violation"] = total_violation
+            flexibility = user.get("flexibility", {}).get("constraint_tolerance", 0.3)
 
-        # Threshold
-        threshold = self.lambda_val * len(self.constraints)
+            df[scaled_col] = df[base_col] * (1 / (flexibility + 1e-3))
+            scaled_cols.append(scaled_col)
 
-        feasible_df = df[df["total_violation"] <= threshold]
+        if scaled_cols:
+            df["total_violation"] = df[scaled_cols].sum(axis=1)
+        else:
+            df["total_violation"] = 0
 
-        return feasible_df
+        # stricter filtering to remove junk
+        threshold = self.lambda_val * len(self.users) * 0.7
+        return df[df["total_violation"] <= threshold]

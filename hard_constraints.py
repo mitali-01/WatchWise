@@ -1,74 +1,56 @@
 import pandas as pd
 
+
 class ConstraintEngine:
-    def __init__(self, df: pd.DataFrame):
-        self.df = df
+    def __init__(self, df: pd.DataFrame, users: list):
+        self.df = df.copy()
+        self.users = users
 
-    def split_constraints(self, constraints):
-        strict = []
-        relaxable = []
+    def _check_genre_exclude(self, genres, excluded):
+        if pd.isna(genres):
+            return 0
+        genre_list = genres.split("|")
+        return int(any(g in genre_list for g in excluded))
 
-        for c in constraints:
-            if c["priority"] == 1:
-                strict.append(c)
-            elif c["priority"] == 2:
-                relaxable.append(c)
+    def _check_language(self, lang, allowed):
+        if pd.isna(lang):
+            return 1
+        return int(lang not in allowed)
 
-        return strict, relaxable
+    def _check_runtime(self, runtime, max_runtime):
+        if pd.isna(runtime):
+            return 0
+        return int(runtime > max_runtime)
 
-    def apply_constraints(self, constraints):
+    def compute_user_violation(self, df, user):
+        violations = pd.Series(0.0, index=df.index)
+        constraints = user.get("constraints", {})
+
+        if "genre_exclude" in constraints:
+            violations += df["genres"].apply(
+                lambda x: self._check_genre_exclude(x, constraints["genre_exclude"])
+            )
+
+        if "language_include" in constraints and "original_language" in df.columns:
+            violations += df["original_language"].apply(
+                lambda x: self._check_language(x, constraints["language_include"])
+            )
+
+        if "runtime_max" in constraints and "runtime" in df.columns:
+            violations += df["runtime"].apply(
+                lambda x: self._check_runtime(x, constraints["runtime_max"])
+            )
+
+        return violations
+
+    def apply(self):
         df = self.df.copy()
+        violation_cols = []
 
-        for c in constraints:
-            field = c["field"]
-            op = c["op"]
-            value = c["value"]
+        for i, user in enumerate(self.users):
+            col = f"user_{i}_violation"
+            df[col] = self.compute_user_violation(df, user)
+            violation_cols.append(col)
 
-            if field not in df.columns:
-                continue
-
-            if op == "==":
-                df = df[df[field] == value]
-
-            elif op == "!=":
-                df = df[df[field] != value]
-
-            elif op == "<=":
-                df = df[df[field] <= value]
-
-            elif op == ">=":
-                df = df[df[field] >= value]
-
-            elif op == "<":
-                df = df[df[field] < value]
-
-            elif op == ">":
-                df = df[df[field] > value]
-
-            elif op == "in":
-                df = df[df[field].isin(value)]
-
-            elif op == "not_in":
-                df = df[~df[field].isin(value)]
-
-            elif op == "genre_in":
-                df = df[df["genres"].apply(
-                    lambda x: any(g in x.split("|") for g in value)
-                    if pd.notna(x) else False
-                )]
-
-            elif op == "genre_not_in":
-                df = df[df["genres"].apply(
-                    lambda x: all(g not in x.split("|") for g in value)
-                    if pd.notna(x) else True
-                )]
-
+        df["total_violation"] = df[violation_cols].sum(axis=1)
         return df
-
-    def filter(self, constraints):
-        strict, relaxable = self.split_constraints(constraints)
-
-        # Apply strict constraints only
-        filtered_df = self.apply_constraints(strict)
-
-        return filtered_df, relaxable
